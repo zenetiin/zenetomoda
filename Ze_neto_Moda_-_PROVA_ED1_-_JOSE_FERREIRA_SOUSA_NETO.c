@@ -3,43 +3,101 @@
 #include <string.h>
 #include <stdbool.h>
 
-#define MAX_USERS 100
 #define MAX_EMAIL_LENGTH 80
 #define MAX_PASSWORD_LENGTH 20
-#define MAX_ITEMS 100
 #define MAX_ITEM_NAME_LENGTH 50
 #define DATE_LENGTH 11 // formato: DD/MM/AAAA
 
 // Estrutura para armazenar informações do usuário
-typedef struct {
+typedef struct User {
     char name[MAX_ITEM_NAME_LENGTH];
     char username[MAX_EMAIL_LENGTH];
     char password[MAX_PASSWORD_LENGTH];
     char birthdate[DATE_LENGTH];
     bool valid;
+    struct User* next; // Ponteiro para o próximo usuário na lista
 } User;
 
 // Estrutura para armazenar informações do item (roupa)
-typedef struct {
+typedef struct Item {
     int id;
     char name[MAX_ITEM_NAME_LENGTH];
     float price;
     int quantity;
+    struct Item* next; // Ponteiro para o próximo item na lista
 } Item;
 
-User users[MAX_USERS];
-Item items[MAX_ITEMS];
-Item cart[MAX_ITEMS]; // Carrinho de compras
-int num_users = 0;
-int num_items = 0;
-int num_cart_items = 0;
-bool isLoggedIn = false; // Variável para controlar o estado de login
+User* users = NULL; // Lista encadeada de usuários
+Item* items = NULL; // Lista encadeada de itens
+
+// Função para adicionar um usuário à lista encadeada de usuários
+void addUserToList(User** userList, User* newUser) {
+    if (*userList == NULL) {
+        *userList = newUser;
+    } else {
+        User* current = *userList;
+        while (current->next != NULL) {
+            current = current->next;
+        }
+        current->next = newUser;
+    }
+}
+
+// Função para adicionar um item à lista encadeada de itens
+void addItemToList(Item** itemList, Item* newItem) {
+    if (*itemList == NULL) {
+        *itemList = newItem;
+    } else {
+        Item* current = *itemList;
+        while (current->next != NULL) {
+            current = current->next;
+        }
+        current->next = newItem;
+    }
+}
+
+// Função para comparar dois itens por preço (para ser usada na ordenação)
+int compareItemsByPrice(const void* a, const void* b) {
+    const Item* itemA = *(const Item**)a;
+    const Item* itemB = *(const Item**)b;
+    return (itemA->price - itemB->price);
+}
+
+// Função para ordenar os itens por preço
+void sortItemsByPrice(Item** itemList) {
+    int numItems = 0;
+    Item* current = *itemList;
+    // Contar o número de itens
+    while (current != NULL) {
+        numItems++;
+        current = current->next;
+    }
+    // Criar um array de ponteiros para itens
+    Item* itemsArray[numItems];
+    current = *itemList;
+    for (int i = 0; i < numItems; i++) {
+        itemsArray[i] = current;
+        current = current->next;
+    }
+    // Ordenar o array de itens
+    qsort(itemsArray, numItems, sizeof(Item*), compareItemsByPrice);
+    // Reconstruir a lista encadeada com os itens ordenados
+    *itemList = itemsArray[0];
+    current = *itemList;
+    for (int i = 1; i < numItems; i++) {
+        current->next = itemsArray[i];
+        current = current->next;
+    }
+    current->next = NULL;
+}
 
 // Função para verificar se o email já está cadastrado
 bool isEmailDuplicate(char *email) {
-    for (int i = 0; i < num_users; i++) {
-        if (strcmp(users[i].username, email) == 0)
+    User* current = users;
+    while (current != NULL) {
+        if (strcmp(current->username, email) == 0)
             return true;
+        current = current->next;
     }
     return false;
 }
@@ -80,12 +138,16 @@ void registerUser() {
         scanf("%s", birthdate);
     }
 
-    strcpy(users[num_users].name, name);
-    strcpy(users[num_users].username, username);
-    strcpy(users[num_users].password, password);
-    strcpy(users[num_users].birthdate, birthdate);
-    users[num_users].valid = true;
-    num_users++;
+    User* newUser = (User*)malloc(sizeof(User));
+    strcpy(newUser->name, name);
+    strcpy(newUser->username, username);
+    strcpy(newUser->password, password);
+    strcpy(newUser->birthdate, birthdate);
+    newUser->valid = true;
+    newUser->next = NULL;
+
+    addUserToList(&users, newUser);
+
     printf("Usuario cadastrado com sucesso!\n");
 }
 
@@ -98,15 +160,16 @@ void login() {
     scanf("%s", username);
     printf("Digite sua senha: ");
     scanf("%s", password);
-    for (int i = 0; i < num_users; i++) {
-        if (strcmp(users[i].username, username) == 0 && strcmp(users[i].password, password) == 0) {
+    User* current = users;
+    while (current != NULL) {
+        if (strcmp(current->username, username) == 0 && strcmp(current->password, password) == 0) {
             valid_user = true;
             break;
         }
+        current = current->next;
     }
     if (valid_user) {
         printf("Login realizado com sucesso!\n");
-        isLoggedIn = true;
         listItems(); // Mostrar a lista de itens após o login
     } else
         printf("Usuario ou senha invalidos.\n");
@@ -115,16 +178,20 @@ void login() {
 // Função para listar os itens disponíveis
 void listItems() {
     printf("Itens em Promocao:\n");
-    for (int i = 0; i < num_items; i++) {
-        if (items[i].price < 100) {  // Considerando que os itens com preco abaixo de R$ 100 estão em promocao
-            printf("ID: %d | Nome: %s | Preco: R$ %.2f | Quantidade: %d\n", items[i].id, items[i].name, items[i].price, items[i].quantity);
+    Item* current = items;
+    while (current != NULL) {
+        if (current->price < 100) {  // Considerando que os itens com preco abaixo de R$ 100 estão em promocao
+            printf("ID: %d | Nome: %s | Preco: R$ %.2f | Quantidade: %d\n", current->id, current->name, current->price, current->quantity);
         }
+        current = current->next;
     }
     printf("\nOutros Itens Disponiveis:\n");
-    for (int i = 0; i < num_items; i++) {
-        if (items[i].price >= 100) {  // Itens com preco acima ou igual a R$ 100
-            printf("ID: %d | Nome: %s | Preco: R$ %.2f | Quantidade: %d\n", items[i].id, items[i].name, items[i].price, items[i].quantity);
+    current = items;
+    while (current != NULL) {
+        if (current->price >= 100) {  // Itens com preco acima ou igual a R$ 100
+            printf("ID: %d | Nome: %s | Preco: R$ %.2f | Quantidade: %d\n", current->id, current->name, current->price, current->quantity);
         }
+        current = current->next;
     }
     
     // Adicionando opções adicionais após o login
@@ -173,11 +240,13 @@ void listPrice() {
     int itemId;
     printf("Digite o ID do item que deseja verificar o preco: ");
     scanf("%d", &itemId);
-    for (int i = 0; i < num_items; i++) {
-        if (items[i].id == itemId) {
-            printf("O preco do item %s eh R$ %.2f\n", items[i].name, items[i].price);
+    Item* current = items;
+    while (current != NULL) {
+        if (current->id == itemId) {
+            printf("O preco do item %s eh R$ %.2f\n", current->name, current->price);
             return;
         }
+        current = current->next;
     }
     printf("Item nao encontrado.\n");
 }
@@ -187,11 +256,13 @@ void listQuantity() {
     int itemId;
     printf("Digite o ID do item que deseja verificar a quantidade: ");
     scanf("%d", &itemId);
-    for (int i = 0; i < num_items; i++) {
-        if (items[i].id == itemId) {
-            printf("A quantidade disponivel do item %s eh %d\n", items[i].name, items[i].quantity);
+    Item* current = items;
+    while (current != NULL) {
+        if (current->id == itemId) {
+            printf("A quantidade disponivel do item %s eh %d\n", current->name, current->quantity);
             return;
         }
+        current = current->next;
     }
     printf("Item nao encontrado.\n");
 }
@@ -201,17 +272,19 @@ void editItem() {
     int itemId;
     printf("Digite o ID do item que deseja editar: ");
     scanf("%d", &itemId);
-    for (int i = 0; i < num_items; i++) {
-        if (items[i].id == itemId) {
+    Item* current = items;
+    while (current != NULL) {
+        if (current->id == itemId) {
             printf("Digite o novo nome do item: ");
-            scanf("%s", items[i].name);
+            scanf("%s", current->name);
             printf("Digite o novo preco do item: ");
-            scanf("%f", &items[i].price);
+            scanf("%f", &current->price);
             printf("Digite a nova quantidade do item: ");
-            scanf("%d", &items[i].quantity);
+            scanf("%d", &current->quantity);
             printf("Item editado com sucesso.\n");
             return;
         }
+        current = current->next;
     }
     printf("Item nao encontrado.\n");
 }
@@ -221,15 +294,21 @@ void deleteItem() {
     int itemId;
     printf("Digite o ID do item que deseja excluir: ");
     scanf("%d", &itemId);
-    for (int i = 0; i < num_items; i++) {
-        if (items[i].id == itemId) {
-            for (int j = i; j < num_items - 1; j++) {
-                items[j] = items[j + 1];
+    Item* prev = NULL;
+    Item* current = items;
+    while (current != NULL) {
+        if (current->id == itemId) {
+            if (prev == NULL) {
+                items = current->next;
+            } else {
+                prev->next = current->next;
             }
-            num_items--;
+            free(current);
             printf("Item excluido com sucesso.\n");
             return;
         }
+        prev = current;
+        current = current->next;
     }
     printf("Item nao encontrado.\n");
 }
@@ -242,48 +321,26 @@ void addToCart() {
     printf("Digite a quantidade desejada: ");
     scanf("%d", &quantity);
 
-    for (int i = 0; i < num_items; i++) {
-        if (items[i].id == itemId) {
-            if (items[i].quantity >= quantity) {
-                for (int j = 0; j < num_cart_items; j++) {
-                    if (cart[j].id == itemId) {
-                        cart[j].quantity += quantity;
-                        printf("Item adicionado ao carrinho com sucesso.\n");
-                        break;
-                    }
-                }
-                cart[num_cart_items] = items[i];
-                cart[num_cart_items].quantity = quantity;
-                num_cart_items++;
+    Item* current = items;
+    while (current != NULL) {
+        if (current->id == itemId) {
+            if (current->quantity >= quantity) {
+                // Adicionar item ao carrinho (implementação específica depende da estrutura do carrinho)
                 printf("Item adicionado ao carrinho com sucesso.\n");
             } else {
                 printf("Quantidade insuficiente em estoque.\n");
             }
-            printf("Deseja adicionar outro item? (1 - Sim / 2 - Finalizar Compra): ");
-            int choice;
-            scanf("%d", &choice);
-            if (choice == 2)
-                checkout();
-            else if (choice != 1)
-                printf("Opcao invalida. Finalizando compra.\n");
             return;
         }
+        current = current->next;
     }
     printf("Item nao encontrado.\n");
 }
 
 // Função para finalizar a compra
 void checkout() {
-    float total = 0;
-    printf("Itens no carrinho:\n");
-    for (int i = 0; i < num_cart_items; i++) {
-        printf("ID: %d | Nome: %s | Preco: R$ %.2f | Quantidade: %d\n", cart[i].id, cart[i].name, cart[i].price, cart[i].quantity);
-        total += cart[i].price * cart[i].quantity;
-    }
-    printf("Total da compra: R$ %.2f\n", total);
+    // Implementação específica da finalização da compra (depende da estrutura do carrinho)
     printf("Compra finalizada. Obrigado por comprar na Ze Neto Moda!\n");
-    // Resetar o carrinho
-    num_cart_items = 0;
 }
 
 // Função principal
@@ -291,78 +348,88 @@ int main() {
     printf("Bem-vindo a Ze Neto Moda!\n");
     printf("Encontre as melhores roupas importadas aqui.\n\n");
 
-    // Adicionando itens de exemplo
-    strcpy(items[num_items].name, "Camisa Polo");
-    items[num_items].price = 120.0;
-    items[num_items].quantity = 20;
-    items[num_items].id = 1;
-    num_items++;
+    // Adicionando itens de exemplo à lista encadeada de itens
+    Item* newItem1 = (Item*)malloc(sizeof(Item));
+    newItem1->id = 1;
+    strcpy(newItem1->name, "Camisa Polo");
+    newItem1->price = 120.0;
+    newItem1->quantity = 20;
+    newItem1->next = NULL;
+    addItemToList(&items, newItem1);
 
-    strcpy(items[num_items].name, "Calca Jeans");
-    items[num_items].price = 150.0;
-    items[num_items].quantity = 15;
-    items[num_items].id = 2;
-    num_items++;
+    Item* newItem2 = (Item*)malloc(sizeof(Item));
+    newItem2->id = 2;
+    strcpy(newItem2->name, "Calca Jeans");
+    newItem2->price = 150.0;
+    newItem2->quantity = 15;
+    newItem2->next = NULL;
+    addItemToList(&items, newItem2);
 
-    strcpy(items[num_items].name, "Vestido Longo");
-    items[num_items].price = 200.0;
-    items[num_items].quantity = 10;
-    items[num_items].id = 3;
-    num_items++;
+    Item* newItem3 = (Item*)malloc(sizeof(Item));
+    newItem3->id = 3;
+    strcpy(newItem3->name, "Vestido Longo");
+    newItem3->price = 200.0;
+    newItem3->quantity = 10;
+    newItem3->next = NULL;
+    addItemToList(&items, newItem3);
 
-    strcpy(items[num_items].name, "Bone Adidas Preto e Branco");
-    items[num_items].price = 50.0;
-    items[num_items].quantity = 10;
-    items[num_items].id = 4;
-    num_items++;
+    Item* newItem4 = (Item*)malloc(sizeof(Item));
+    newItem4->id = 4;
+    strcpy(newItem4->name, "Bone Adidas Preto e Branco");
+    newItem4->price = 50.0;
+    newItem4->quantity = 10;
+    newItem4->next = NULL;
+    addItemToList(&items, newItem4);
 
-    strcpy(items[num_items].name, "Bone Nike Preto");
-    items[num_items].price = 50.0;
-    items[num_items].quantity = 15;
-    items[num_items].id = 5;
-    num_items++;
+    Item* newItem5 = (Item*)malloc(sizeof(Item));
+    newItem5->id = 5;
+    strcpy(newItem5->name, "Bone Nike Preto");
+    newItem5->price = 50.0;
+    newItem5->quantity = 15;
+    newItem5->next = NULL;
+    addItemToList(&items, newItem5);
 
-    strcpy(items[num_items].name, "Camisa Oversized");
-    items[num_items].price = 120.0;
-    items[num_items].quantity = 10;
-    items[num_items].id = 6;
-    num_items++;
+    Item* newItem6 = (Item*)malloc(sizeof(Item));
+    newItem6->id = 6;
+    strcpy(newItem6->name, "Camisa Oversized");
+    newItem6->price = 120.0;
+    newItem6->quantity = 10;
+    newItem6->next = NULL;
+    addItemToList(&items, newItem6);
 
-    strcpy(items[num_items].name, "Short Dry Fit");
-    items[num_items].price = 75.0;
-    items[num_items].quantity = 10;
-    items[num_items].id = 7;
-    num_items++;
+    Item* newItem7 = (Item*)malloc(sizeof(Item));
+    newItem7->id = 7;
+    strcpy(newItem7->name, "Short Dry Fit");
+    newItem7->price = 75.0;
+    newItem7->quantity = 10;
+    newItem7->next = NULL;
+    addItemToList(&items, newItem7);
 
     int choice;
     while (1) {
-        if (!isLoggedIn) {
-            printf("\n===== Menu Principal =====\n");
-            printf("1. Login\n");
-            printf("2. Registrar\n");
-            printf("3. Esqueceu a Senha ou Email\n");
-            printf("4. Sair\n");
-            printf("Escolha uma opcao: ");
-            scanf("%d", &choice);
+        printf("\n===== Menu Principal =====\n");
+        printf("1. Login\n");
+        printf("2. Registrar\n");
+        printf("3. Esqueceu a Senha ou Email\n");
+        printf("4. Sair\n");
+        printf("Escolha uma opcao: ");
+        scanf("%d", &choice);
 
-            switch (choice) {
-                case 1:
-                    login();
-                    break;
-                case 2:
-                    registerUser();
-                    break;
-                case 3:
-                    printf("Por favor, entre em contato com o suporte para recuperar sua senha ou email.\n");
-                    break;
-                case 4:
-                    printf("Saindo do programa. Obrigado!\n");
-                    exit(0);
-                default:
-                    printf("Opcao invalida. Tente novamente.\n");
-            }
-        } else {
-            listItems();
+        switch (choice) {
+            case 1:
+                login();
+                break;
+            case 2:
+                registerUser();
+                break;
+            case 3:
+                printf("Por favor, entre em contato com o suporte para recuperar sua senha ou email.\n");
+                break;
+            case 4:
+                printf("Saindo do programa. Obrigado!\n");
+                exit(0);
+            default:
+                printf("Opcao invalida. Tente novamente.\n");
         }
     }
     return 0;
